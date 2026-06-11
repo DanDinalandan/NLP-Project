@@ -127,7 +127,7 @@ export function Flashcards() {
         </div>
       )}
       <div className="fc-hint-text">
-        Self-rating feeds your spaced repetition queue · "Know it" awards XP (requires internet)
+        Self-rating feeds your spaced repetition queue · "Know it" awards XP
       </div>
     </div>
   );

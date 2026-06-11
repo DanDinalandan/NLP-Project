@@ -23,7 +23,7 @@ export function Progress() {
   const xpPct      = Math.min(100, Math.round((user.xp / xpMax) * 100));
 
   const earnedCount = ACHIEVEMENTS.filter(a => earnedAchievements[a.id]).length;
-  const isOnline    = navigator.onLine;
+  const isOnline    = navigator.onLine; // only used for the sharing notice
 
   return (
     <>
@@ -33,7 +33,7 @@ export function Progress() {
       {!isOnline && (
         <div className="offline-xp-notice gap-14">
           <Ic n="shield" s={14} />
-          You&rsquo;re offline — XP and achievements are only awarded while connected to the internet.
+          You&rsquo;re offline — search and public sharing are unavailable, but everything else works normally.
         </div>
       )}
 

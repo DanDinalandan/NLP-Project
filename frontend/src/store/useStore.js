@@ -220,34 +220,30 @@ export const useStore = create(
           },
         }));
 
-        // Track reviewer count and unlock achievements (online-only)
-        if (navigator.onLine) {
-          set(s => {
-            const newCount = s.reviewerCount + 1;
-            let newEarned = { ...s.earnedAchievements };
-            let newQueue  = [...s.achievementQueue];
-            let xpGain = 0;
+        // Track reviewer count and unlock achievements
+        set(s => {
+          const newCount = s.reviewerCount + 1;
+          let newEarned = { ...s.earnedAchievements };
+          let newQueue  = [...s.achievementQueue];
+          let xpGain = 0;
 
-            const tryUnlock = (id) => {
-              if (!newEarned[id]) {
-                const ach = ACHIEVEMENTS.find(a => a.id === id);
-                if (ach) { newEarned[id] = true; newQueue.push(ach); xpGain += ach.xp; }
-              }
-            };
+          const tryUnlock = (id) => {
+            if (!newEarned[id]) {
+              const ach = ACHIEVEMENTS.find(a => a.id === id);
+              if (ach) { newEarned[id] = true; newQueue.push(ach); xpGain += ach.xp; }
+            }
+          };
 
-            if (newCount === 1)  tryUnlock('create_reviewer');
-            if (newCount >= 5)   tryUnlock('create_5_reviewers');
-            if (newCount >= 10)  tryUnlock('create_10_reviewers');
+          if (newCount === 1)  tryUnlock('create_reviewer');
+          if (newCount >= 5)   tryUnlock('create_5_reviewers');
+          if (newCount >= 10)  tryUnlock('create_10_reviewers');
 
-            const { user, earnedAchievements, achievementQueue } =
-              xpGain > 0 ? applyXpGain(s.user, newEarned, newQueue, xpGain)
-                         : { user: s.user, earnedAchievements: newEarned, achievementQueue: newQueue };
+          const { user, earnedAchievements, achievementQueue } =
+            xpGain > 0 ? applyXpGain(s.user, newEarned, newQueue, xpGain)
+                       : { user: s.user, earnedAchievements: newEarned, achievementQueue: newQueue };
 
-            return { reviewerCount: newCount, user, earnedAchievements, achievementQueue };
-          });
-        } else {
-          set(s => ({ reviewerCount: s.reviewerCount + 1 }));
-        }
+          return { reviewerCount: newCount, user, earnedAchievements, achievementQueue };
+        });
       },
 
       pollSourceFile: async (folderId, fileId) => {
@@ -289,9 +285,8 @@ export const useStore = create(
 
       // ── Achievements ─────────────────────────────────────────
 
-      // Unlock a single achievement by id. No-op if offline or already earned.
+      // Unlock a single achievement by id. No-op if already earned.
       unlockAchievement: (id) => {
-        if (!navigator.onLine) return;
         set(s => {
           if (s.earnedAchievements[id]) return {};
           const ach = ACHIEVEMENTS.find(a => a.id === id);
@@ -331,12 +326,7 @@ export const useStore = create(
             : s.sessionFreshFolders;
           const isFirstTry = newFreshFolders[folderId];
 
-          // If offline: update mastery UI only — no XP, no achievements, no milestones
-          if (!navigator.onLine) {
-            return { masteredCards: updMC, sessionFreshFolders: newFreshFolders };
-          }
-
-          // ── XP & achievements (online only) ──────────────────
+          // ── XP & achievements ────────────────────────────────
           const newTotal  = s.totalTermsMastered + 1;
           // +1 XP per 5 global terms mastered
           const termsXp   = Math.floor(newTotal / 5) > Math.floor(s.totalTermsMastered / 5) ? 1 : 0;
@@ -417,10 +407,6 @@ export const useStore = create(
             : s.sessionFreshFolders;
           const isFirstTry = newFreshFolders[folderId];
 
-          if (!navigator.onLine) {
-            return { masteredMCQs: updMQ, sessionFreshFolders: newFreshFolders };
-          }
-
           const newTotal = s.totalTermsMastered + 1;
           const termsXp  = Math.floor(newTotal / 5) > Math.floor(s.totalTermsMastered / 5) ? 1 : 0;
 
@@ -485,7 +471,6 @@ export const useStore = create(
 
       // ── Complete a review session ─────────────────────────────
       completeReviewSession: (folderId) => {
-        if (!navigator.onLine) return;
         set(s => {
           const newCount = s.reviewSessionCount + 1;
           let newEarned = { ...s.earnedAchievements };
@@ -522,9 +507,8 @@ export const useStore = create(
         });
       },
 
-      // ── Legacy addXp (online-only) ────────────────────────────
+      // ── Legacy addXp ─────────────────────────────────────────
       addXp: (amount) => {
-        if (!navigator.onLine) return;
         set(s => {
           const { user, earnedAchievements, achievementQueue } =
             applyXpGain(s.user, s.earnedAchievements, s.achievementQueue, amount);

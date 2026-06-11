@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from config import SUPABASE_URL, SUPABASE_ANON_KEY
 from database.init_db import get_connection, get_db_path
 from models.schemas import LoginRequest
 from services.ollama_service import check_ollama_status
@@ -84,22 +85,20 @@ def export_data():
 async def login(body: LoginRequest):
     try:
         import httpx
-        supabase_url = os.environ.get("SUPABASE_URL", "")
-        supabase_key = os.environ.get("SUPABASE_ANON_KEY", "")
-        if not supabase_url or not supabase_key:
+        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
             raise HTTPException(503, "Supabase not configured")
 
         async with httpx.AsyncClient() as client:
             r = await client.post(
-                f"{supabase_url}/auth/v1/token?grant_type=password",
-                headers={"apikey": supabase_key, "Content-Type": "application/json"},
+                f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+                headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
                 json={"email": body.email, "password": body.password},
             )
             if r.status_code != 200:
                 # Try sign up
                 r2 = await client.post(
-                    f"{supabase_url}/auth/v1/signup",
-                    headers={"apikey": supabase_key, "Content-Type": "application/json"},
+                    f"{SUPABASE_URL}/auth/v1/signup",
+                    headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
                     json={"email": body.email, "password": body.password},
                 )
                 if r2.status_code not in (200, 201):
