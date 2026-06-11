@@ -1,3 +1,13 @@
+# Environment secrets — never commit these
+backend/.env
+.env
+
+# Tauri sidecar binary — built by build_sidecar.bat or GitHub Actions, never committed
+frontend/src-tauri/binaries/*.exe
+
+# Tauri build output
+frontend/src-tauri/target/
+
 # Logs
 logs
 *.log
