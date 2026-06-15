@@ -3,21 +3,18 @@ from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 
-# collect_all gathers submodules + data files + native DLLs for each package.
-# This is required for onnxruntime (native DLLs) and chromadb (embedding model data).
-chroma_datas,   chroma_binaries,   chroma_hidden   = collect_all('chromadb')
-onnx_datas,     onnx_binaries,     onnx_hidden     = collect_all('onnxruntime')
-tok_datas,      tok_binaries,      tok_hidden      = collect_all('tokenizers')
+# collect_all ensures all chromadb Python submodules are discovered.
+# onnxruntime is NOT bundled — the stub in main.py prevents the NameError
+# without needing any native DLLs, keeping the bundle small and fast to extract.
+chroma_datas, chroma_binaries, chroma_hidden = collect_all('chromadb')
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=chroma_binaries + onnx_binaries + tok_binaries,
+    binaries=chroma_binaries,
     datas=[
         ('database/schema.sql', 'database'),
         *chroma_datas,
-        *onnx_datas,
-        *tok_datas,
     ],
     hiddenimports=[
         'uvicorn.logging',
@@ -38,8 +35,6 @@ a = Analysis(
         'httpx',
         'psutil',
         *chroma_hidden,
-        *onnx_hidden,
-        *tok_hidden,
     ],
     hookspath=[],
     hooksconfig={},

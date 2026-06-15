@@ -1,8 +1,42 @@
+import logging
 import os
 from pathlib import Path
 from typing import List, Dict, Any
+import httpx
 import chromadb
 from chromadb.config import Settings
+
+logger = logging.getLogger(__name__)
+
+OLLAMA_BASE = "http://127.0.0.1:11434"
+
+
+class OllamaEmbeddingFunction:
+    """Embed texts via Ollama using whichever model is currently loaded."""
+
+    def __call__(self, input: List[str]) -> List[List[float]]:
+        model = self._active_model()
+        results = []
+        with httpx.Client(timeout=30.0) as client:
+            for text in input:
+                r = client.post(
+                    f"{OLLAMA_BASE}/api/embeddings",
+                    json={"model": model, "prompt": text},
+                )
+                r.raise_for_status()
+                results.append(r.json()["embedding"])
+        return results
+
+    def _active_model(self) -> str:
+        try:
+            with httpx.Client(timeout=3.0) as client:
+                r = client.get(f"{OLLAMA_BASE}/api/tags")
+                models = r.json().get("models", [])
+                if models:
+                    return models[0]["name"]
+        except Exception:
+            pass
+        return "llama3.2:3b"
 
 
 def get_chroma_client() -> chromadb.Client:
@@ -18,6 +52,7 @@ def get_chroma_client() -> chromadb.Client:
 def get_collection(client: chromadb.Client, folder_id: int):
     return client.get_or_create_collection(
         name=f"folder_{folder_id}",
+        embedding_function=OllamaEmbeddingFunction(),
         metadata={"hnsw:space": "cosine"},
     )
 
@@ -42,7 +77,10 @@ def add_chunks(
         for i in range(len(chunks))
     ]
 
-    collection.upsert(documents=chunks, ids=ids, metadatas=metadatas)
+    try:
+        collection.upsert(documents=chunks, ids=ids, metadatas=metadatas)
+    except Exception as e:
+        logger.warning("ChromaDB embed skipped (Ollama not running?): %s", e)
 
 
 def query_chunks(

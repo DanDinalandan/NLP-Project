@@ -37,6 +37,18 @@ if getattr(sys, "frozen", False):
     base = Path(sys._MEIPASS)
     sys.path.insert(0, str(base))
 
+# Stub out ONNXMiniLM_L6_V2 so chromadb imports without onnxruntime DLLs.
+# We always pass OllamaEmbeddingFunction to every collection, so this stub
+# (only used by DefaultEmbeddingFunction) is never actually called.
+import types as _types
+_onnx_stub = _types.ModuleType("chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2")
+class _ONNXStub:
+    def __call__(self, input):
+        raise RuntimeError("onnxruntime not bundled — use OllamaEmbeddingFunction")
+_onnx_stub.ONNXMiniLM_L6_V2 = _ONNXStub
+sys.modules["chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2"] = _onnx_stub
+del _types, _onnx_stub, _ONNXStub
+
 from database.init_db import init_db
 from routers.folders import router as folders_router
 from routers.outputs import router as outputs_router
