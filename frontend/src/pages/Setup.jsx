@@ -23,6 +23,8 @@ export function Setup({ onDone }) {
   const [pullStatus,     setPullStatus]     = useState("idle"); // idle starting downloading done error
   const [pullError,      setPullError]      = useState("");
 
+  const [backendReady,   setBackendReady]   = useState(false);
+
   const [installJobId,   setInstallJobId]   = useState(null);
   const [installProgress,setInstallProgress]= useState(0);
   // idle | downloading | installing | done | error
@@ -36,13 +38,17 @@ export function Setup({ onDone }) {
   const checkOllama = async () => {
     try {
       const res = await settingsApi.getOllamaStatus();
+      setBackendReady(true);
       setOllamaOk(res.running);
       setRamGb(res.ram_gb ?? 0);
       setRecommended(res.recommended_model ?? "llama3.2:3b");
       setExistingModels(res.models ?? []);
       if (!selectedModel) setSelectedModel(res.recommended_model ?? "llama3.2:3b");
       return res;
-    } catch { return null; }
+    } catch {
+      setBackendReady(false);
+      return null;
+    }
   };
 
   useEffect(() => { checkOllama(); }, []);
@@ -117,9 +123,16 @@ export function Setup({ onDone }) {
     try {
       const res = await settingsApi.installOllama();
       setInstallJobId(res.job_id);
-    } catch {
+    } catch (e) {
       setInstallStatus("error");
-      setInstallError("Could not start the installer. Make sure you are connected to the internet.");
+      const msg = e?.message ?? "";
+      if (msg.includes("fetch") || msg.includes("NetworkError") || msg.includes("network")) {
+        setInstallError(
+          "ReviewBot's background service is not responding. It may still be starting up — wait 10–15 seconds and try again. If this keeps happening, check that your antivirus is not blocking ReviewBot."
+        );
+      } else {
+        setInstallError(`Could not start the installer: ${msg || "unknown error"}`);
+      }
     }
   };
 
@@ -212,7 +225,13 @@ export function Setup({ onDone }) {
                   ReviewBot will download and install it automatically. A Windows security
                   prompt may appear; click <strong>Yes</strong> to allow it.
                 </p>
-                <button className="setup-btn-primary" onClick={startInstall}>
+                {!backendReady && (
+                  <div className="setup-polling-hint" style={{ justifyContent: "center", marginBottom: 12 }}>
+                    <span className="setup-spinner" />
+                    Starting ReviewBot service… please wait a moment.
+                  </div>
+                )}
+                <button className="setup-btn-primary" onClick={startInstall} disabled={!backendReady}>
                   Install Ollama automatically →
                 </button>
                 <button className="setup-btn-skip" onClick={openOllamaSite}>
@@ -266,7 +285,12 @@ export function Setup({ onDone }) {
             {!ollamaOk && installStatus === "error" && (
               <>
                 <div className="setup-error-msg">{installError}</div>
-                <button className="setup-btn-primary" onClick={startInstall}>
+                {!backendReady && (
+                  <div className="setup-polling-hint" style={{ justifyContent: "center", marginBottom: 8 }}>
+                    <span className="setup-spinner" /> Waiting for ReviewBot service…
+                  </div>
+                )}
+                <button className="setup-btn-primary" onClick={startInstall} disabled={!backendReady}>
                   Try again
                 </button>
                 <button className="setup-btn-skip" onClick={openOllamaSite}>
