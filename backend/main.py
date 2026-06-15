@@ -67,8 +67,8 @@ app = FastAPI(title="ReviewBot API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:1420", "tauri://localhost", "https://tauri.localhost"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
