@@ -175,4 +175,14 @@ def get_active_model(db_conn) -> str:
     if not model:
         ram_gb = get_ram_gb()
         model = get_recommended_model(ram_gb) or "llama3.2:3b"
+
+    # Verify the model is actually installed; fall back to first available
+    try:
+        r = httpx.get(f"{OLLAMA_BASE}/api/tags", timeout=3.0)
+        installed = [m["name"] for m in r.json().get("models", [])]
+        if installed and model not in installed:
+            model = installed[0]
+    except Exception:
+        pass
+
     return model
