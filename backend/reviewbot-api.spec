@@ -3,10 +3,16 @@ from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 
-# collect_all ensures all chromadb Python submodules are discovered.
-# onnxruntime is NOT bundled — the stub in main.py prevents the NameError
-# without needing any native DLLs, keeping the bundle small and fast to extract.
 chroma_datas, chroma_binaries, chroma_hidden = collect_all('chromadb')
+
+# Strip the ONNX embedding module — we stub it out via the runtime hook instead.
+# Keeping it in the bundle would let FrozenImporter override our sys.modules stub.
+_ONNX_MODS = {
+    'chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2',
+    'onnxruntime',
+    'tokenizers',
+}
+chroma_hidden = [h for h in chroma_hidden if not any(h == m or h.startswith(m + '.') for m in _ONNX_MODS)]
 
 a = Analysis(
     ['main.py'],
@@ -38,8 +44,8 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
+    runtime_hooks=['pyi_rth_chromadb.py'],
+    excludes=['onnxruntime', 'tokenizers', 'chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
