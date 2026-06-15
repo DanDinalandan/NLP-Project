@@ -10,7 +10,7 @@ router = APIRouter()
 
 RAG_PROMPT = """\
 You are a study assistant. Answer the student's question using ONLY the context provided below.
-If the answer is not in the context, say "I don't have information on that in your materials."
+If the answer is not clearly in the context, say "I don't have enough information on that in your materials." then briefly answer from general knowledge if relevant.
 
 Context:
 {context}
@@ -18,7 +18,14 @@ Context:
 ---
 Question: {question}
 
-Answer concisely (150–200 words):"""
+Reply in this format — keep it short and scannable:
+- Use bullet points for lists, steps, or multiple concepts
+- Bold key terms with **term**
+- Maximum 3–5 bullet points or 2–3 short sentences
+- No long paragraphs
+- Cite the source at the end: (Source: filename, page X)
+
+Answer:"""
 
 
 def row_to_dict(row) -> dict:

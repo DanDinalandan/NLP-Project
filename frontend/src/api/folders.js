@@ -14,6 +14,12 @@ export const foldersApi = {
   },
   deleteFile: (fileId) => api.delete(`/files/${fileId}`),
   getFile: (fileId) => api.get(`/files/${fileId}`),
+  updateFileTitle: (fileId, title) => api.put(`/files/${fileId}/title`, { title }),
 
-  generate: (folderId) => api.post(`/folders/${folderId}/generate`),
+  generate: (folderId, fileIds = null, options = {}) =>
+    api.post(`/folders/${folderId}/generate`, {
+      ...(fileIds?.length ? { file_ids: fileIds } : {}),
+      options,
+    }),
+  cancelFile: (fileId) => api.post(`/files/${fileId}/cancel`),
 };

@@ -1,15 +1,18 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { USER } from '../data/mockData';
-import { foldersApi } from '../api/folders.js';
-import { outputsApi } from '../api/outputs.js';
+import { foldersApi }  from '../api/folders.js';
+import { outputsApi }  from '../api/outputs.js';
+import { settingsApi } from '../api/settings.js';
 import { xpForLevel, ACHIEVEMENTS } from '../data/gamification.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function relativeTime(dateStr) {
   if (!dateStr) return '';
-  const diff = Date.now() - new Date(dateStr).getTime();
+  // SQLite datetime('now') returns UTC without 'Z' — force UTC parsing
+  const utc = dateStr.includes('Z') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
+  const diff = Date.now() - new Date(utc).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
@@ -17,19 +20,22 @@ function relativeTime(dateStr) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function buildOutputCards(flashcards, mcqs, pdfOutputs) {
+function buildOutputCards(flashcards, mcqs, fibs, pdfOutputs, folderId) {
   const cards = [];
   if (flashcards.length)
-    cards.push({ id: 'fc', name: 'Flashcards', type: 'Flashcard', col: 1, created: relativeTime(flashcards[0].created_at) });
+    cards.push({ id: 'fc',  name: 'Flashcards',      type: 'Flashcard', col: 1, created: relativeTime(flashcards[0].created_at), folderId });
   if (mcqs.length)
-    cards.push({ id: 'mcq', name: 'MCQ Set', type: 'MCQ', col: 2, created: relativeTime(mcqs[0].created_at) });
+    cards.push({ id: 'mcq', name: 'MCQ Set',         type: 'MCQ',       col: 2, created: relativeTime(mcqs[0].created_at),       folderId });
+  if (fibs.length)
+    cards.push({ id: 'fib', name: 'Fill-in-Blanks',  type: 'FIB',       col: 3, created: relativeTime(fibs[0].created_at),       folderId });
   for (const out of pdfOutputs) {
     const isSummary = out.output_type === 'summary_pdf';
     cards.push({
       id: out.id, name: isSummary ? 'Summary PDF' : 'Reviewer PDF',
-      type: isSummary ? 'Summary' : 'Reviewer', col: isSummary ? 3 : 4,
+      type: isSummary ? 'Summary' : 'Reviewer', col: isSummary ? 4 : 5,
       created: relativeTime(out.created_at),
       downloadUrl: `http://127.0.0.1:8765/outputs/${out.id}/download`,
+      folderId,
     });
   }
   return cards;
@@ -80,6 +86,14 @@ export function getFolderMasteryPct(state, folderId) {
 export const useStore = create(
   persist(
     (set, get) => ({
+      // ── Setup wizard ────────────────────────────────────────
+      setupDismissed: false,
+      dismissSetup: () => set({ setupDismissed: true }),
+
+      // ── Folder deep-link (Dashboard/Sidebar → StudyFiles) ───
+      // Set to a folder ID before navigating to /studyfiles — StudyFiles opens it on mount
+      pendingFolderOpen: null,
+
       // ── Theme ───────────────────────────────────────────────
       theme: 'light',
       setTheme: (t) => {
@@ -116,13 +130,6 @@ export const useStore = create(
       // Used to detect "first-try" achievements (stock_knowledge / im_him).
       sessionFreshFolders: {},
 
-      // ── Mastery mock data ────────────────────────────────────
-      masteryData: [
-        { id: 101, name: 'Flashcards', score: 0, total: 10, type: 'Flashcard' },
-        { id: 102, name: 'MCQ Set',    score: 0, total: 10, type: 'MCQ' },
-        { id: 103, name: 'Summary',    score: 0, total: 10, type: 'Summary' },
-      ],
-
       // ── API-backed state ─────────────────────────────────────
       folders: [],
       foldersLoading: false,
@@ -130,6 +137,7 @@ export const useStore = create(
       files: {},
       flashcards: {},
       mcqs: {},
+      fibs: {},
       activeFolderId: null,
 
       // ── Folders ──────────────────────────────────────────────
@@ -142,6 +150,7 @@ export const useStore = create(
               id: r.id, name: r.name,
               files: r.file_count ?? 0, pub: r.privacy === 'public',
               edited: relativeTime(r.updated_at), outputCount: r.output_count ?? 0,
+              supabase_id: r.supabase_id ?? null,
             })),
             foldersLoading: false,
           });
@@ -150,7 +159,7 @@ export const useStore = create(
 
       addFolder: async (name) => {
         const row = await foldersApi.create(name);
-        const folder = { id: row.id, name: row.name, files: 0, pub: false, edited: 'just now', outputCount: 0 };
+        const folder = { id: row.id, name: row.name, files: 0, pub: false, edited: 'just now', outputCount: 0, supabase_id: null };
         set(s => ({ folders: [...s.folders, folder] }));
         return folder;
       },
@@ -171,6 +180,11 @@ export const useStore = create(
         }));
       },
 
+      patchFolder: (id, patch) =>
+        set(s => ({
+          folders: s.folders.map(f => f.id === id ? { ...f, ...patch } : f),
+        })),
+
       deleteFolder: async (id) => {
         await foldersApi.remove(id);
         set(s => {
@@ -184,6 +198,49 @@ export const useStore = create(
           };
         });
       },
+
+      // ── User profile (persisted in SQLite via backend) ───────
+      loadUserProfile: async () => {
+        try {
+          const s = await settingsApi.getSettings();
+          const name   = s.user_name   || '';
+          const avatar = s.user_avatar || '';
+          const email  = s.supabase_user?.email || '';
+          set(st => ({
+            user: {
+              ...st.user,
+              firstName: name ? name.split(' ')[0] : st.user.firstName,
+              lastName:  name ? name.split(' ').slice(1).join(' ') : st.user.lastName,
+              avatar:    avatar || name[0]?.toUpperCase() || st.user.avatar,
+              email:     email  || st.user.email,
+              streak:    s.streak ?? st.user.streak,
+              supabaseUser: s.supabase_user || null,
+            },
+          }));
+        } catch { /* backend not ready yet */ }
+      },
+
+      saveUserProfile: async (fullName, avatar) => {
+        await settingsApi.saveProfile({ user_name: fullName, user_avatar: avatar });
+        set(st => ({
+          user: {
+            ...st.user,
+            firstName: fullName.split(' ')[0] || '',
+            lastName:  fullName.split(' ').slice(1).join(' ') || '',
+            avatar:    avatar || fullName[0]?.toUpperCase() || st.user.avatar,
+          },
+        }));
+      },
+
+      doCheckin: async () => {
+        try {
+          const res = await settingsApi.checkin();
+          set(st => ({ user: { ...st.user, streak: res.streak } }));
+        } catch { /* ignore */ }
+      },
+
+      setSupabaseUser: (supabaseUser) =>
+        set(st => ({ user: { ...st.user, supabaseUser, email: supabaseUser?.email || st.user.email } })),
 
       // ── Source files ─────────────────────────────────────────
       fetchSourceFiles: async (folderId) => {
@@ -201,6 +258,18 @@ export const useStore = create(
         return row;
       },
 
+      cancelSourceFile: async (folderId, fileId) => {
+        await foldersApi.cancelFile(fileId);
+        set(s => ({
+          sourceFiles: {
+            ...s.sourceFiles,
+            [folderId]: (s.sourceFiles[folderId] ?? []).map(f =>
+              f.id === fileId ? { ...f, status: 'error', error_message: '[Cancelled]' } : f
+            ),
+          },
+        }));
+      },
+
       deleteSourceFile: async (folderId, fileId) => {
         await foldersApi.deleteFile(fileId);
         set(s => ({
@@ -209,8 +278,8 @@ export const useStore = create(
       },
 
       // ── AI Generation ────────────────────────────────────────
-      triggerGenerate: async (folderId) => {
-        await foldersApi.generate(folderId);
+      triggerGenerate: async (folderId, fileIds = null, options = {}) => {
+        await foldersApi.generate(folderId, fileIds, options);
         set(s => ({
           sourceFiles: {
             ...s.sourceFiles,
@@ -261,18 +330,20 @@ export const useStore = create(
 
       // ── Outputs ──────────────────────────────────────────────
       loadFolderOutputs: async (folderId) => {
-        const [flashcards, mcqs, pdfOutputs] = await Promise.all([
+        const [flashcards, mcqs, fibs, pdfOutputs] = await Promise.all([
           outputsApi.listFlashcards(folderId),
           outputsApi.listMcqs(folderId),
+          outputsApi.listFibs(folderId),
           outputsApi.listOutputs(folderId),
         ]);
-        const cards = buildOutputCards(flashcards, mcqs, pdfOutputs);
+        const cards = buildOutputCards(flashcards, mcqs, fibs, pdfOutputs, folderId);
         set(s => ({
           flashcards: { ...s.flashcards, [folderId]: flashcards },
           mcqs:       { ...s.mcqs,       [folderId]: mcqs },
+          fibs:       { ...s.fibs,       [folderId]: fibs },
           files:      { ...s.files,      [folderId]: cards },
         }));
-        return { flashcards, mcqs, pdfOutputs };
+        return { flashcards, mcqs, fibs, pdfOutputs };
       },
 
       deleteFile: (folderId, fileId) =>
@@ -516,17 +587,15 @@ export const useStore = create(
         });
       },
 
-      updateMastery: (id, newScore) =>
-        set(s => ({
-          masteryData: s.masteryData.map(item => item.id === id ? { ...item, score: newScore } : item),
-        })),
     }),
     {
       name: 'reviewbot-gamification',
       version: 1,
       partialize: s => ({
+        setupDismissed:     s.setupDismissed,
         theme:              s.theme,
-        user:               s.user,
+        // Persist user but strip supabaseUser (auth token — always reload from backend)
+        user: { ...s.user, supabaseUser: undefined },
         masteredCards:      s.masteredCards,
         masteredMCQs:       s.masteredMCQs,
         reviewedCards:      s.reviewedCards,
@@ -536,7 +605,7 @@ export const useStore = create(
         reviewerCount:      s.reviewerCount,
         reviewSessionCount: s.reviewSessionCount,
       }),
-      // achievementQueue and sessionFreshFolders are NOT persisted — intentional.
+      // achievementQueue, sessionFreshFolders, supabaseUser — NOT persisted intentionally.
     }
   )
 );

@@ -1,24 +1,55 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Ic } from "../../../components/ui/Icons";
 import { useStore } from "../../../store/useStore.js";
+import { outputsApi } from "../../../api/outputs.js";
 
 export function Flashcards() {
   const activeFolderId       = useStore(s => s.activeFolderId);
-  const rawCards             = useStore(s => s.flashcards[activeFolderId] ?? []);
+  const flashcardsMap        = useStore(s => s.flashcards);
+  const rawCards             = flashcardsMap[activeFolderId] ?? [];
   const markCardMastered     = useStore(s => s.markCardMastered);
   const markCardReviewed     = useStore(s => s.markCardReviewed);
   const completeReviewSession = useStore(s => s.completeReviewSession);
 
   const cards = rawCards.map(c => ({ id: c.id, term: c.front, def: c.back }));
 
-  const [idx,      setIdx]      = useState(0);
-  const [flip,     setFlip]     = useState(false);
-  // { [cardId]: 'know' | 'almost' | 'review' }
-  const [assessed, setAssessed] = useState({});
-  // Track whether the session completion achievement was triggered this session
+  const [idx,       setIdx]      = useState(0);
+  const [flip,      setFlip]     = useState(false);
+  const [assessed,  setAssessed] = useState({});
   const [sessionDone, setSessionDone] = useState(false);
+  const [editing,   setEditing]  = useState(false);
+  const [editFront, setEditFront]= useState('');
+  const [editBack,  setEditBack] = useState('');
+  const [saving,    setSaving]   = useState(false);
 
   const card = cards[idx];
+
+  const startEdit = () => {
+    setEditFront(card.term);
+    setEditBack(card.def);
+    setEditing(true);
+    setFlip(false);
+  };
+
+  const saveEdit = async () => {
+    if (!card || saving) return;
+    setSaving(true);
+    try {
+      await outputsApi.updateFlashcard(card.id, { front: editFront.trim(), back: editBack.trim() });
+      // Update local store
+      useStore.setState(s => ({
+        flashcards: {
+          ...s.flashcards,
+          [activeFolderId]: (s.flashcards[activeFolderId] ?? []).map(c =>
+            c.id === card.id ? { ...c, front: editFront.trim(), back: editBack.trim() } : c
+          ),
+        },
+      }));
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const go = d => {
     setIdx(i => Math.max(0, Math.min(cards.length - 1, i + d)));
@@ -94,17 +125,37 @@ export function Flashcards() {
         )}
       </div>
 
-      <div className="fc-nav">
-        <button className="fc-nav-btn" onClick={() => go(-1)} disabled={idx === 0}>
-          <Ic n="cL" s={16} />
-        </button>
-        <button onClick={() => setFlip(f => !f)} className="fc-flip-btn">
-          Flip card
-        </button>
-        <button className="fc-nav-btn" onClick={() => go(1)} disabled={idx === cards.length - 1}>
-          <Ic n="cR" s={16} />
-        </button>
-      </div>
+      {editing ? (
+        <div className="fc-edit-form">
+          <label className="fc-edit-label">Front (term)</label>
+          <textarea className="fc-edit-input" value={editFront}
+            onChange={e => setEditFront(e.target.value)} rows={2} />
+          <label className="fc-edit-label" style={{ marginTop: 8 }}>Back (definition)</label>
+          <textarea className="fc-edit-input" value={editBack}
+            onChange={e => setEditBack(e.target.value)} rows={3} />
+          <div className="fc-edit-actions">
+            <button className="fc-edit-save" onClick={saveEdit} disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button className="fc-edit-cancel" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div className="fc-nav">
+          <button className="fc-nav-btn" onClick={() => go(-1)} disabled={idx === 0}>
+            <Ic n="cL" s={16} />
+          </button>
+          <button onClick={() => setFlip(f => !f)} className="fc-flip-btn">
+            Flip card
+          </button>
+          <button className="fc-nav-btn" onClick={() => go(1)} disabled={idx === cards.length - 1}>
+            <Ic n="cR" s={16} />
+          </button>
+          <button className="fc-edit-btn" onClick={startEdit} title="Edit this card">
+            <Ic n="edit" s={14} />
+          </button>
+        </div>
+      )}
 
       <div className="fc-assess">
         {ASSESS_OPTS.map(r => {

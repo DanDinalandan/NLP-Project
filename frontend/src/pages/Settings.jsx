@@ -7,43 +7,65 @@ import { Ic }        from "../components/ui/Icons.jsx";
 import { SLabel }    from "../components/ui/SLabel.jsx";
 import { Toggle }    from "../components/ui/Toggle.jsx";
 import { Badge }     from "../components/ui/Badge.jsx";
-import { USER }      from "../data/mockData.js";
 import { settingsApi } from "../api/settings.js";
-import { useStore }  from "../store/useStore.js";
+import { useStore }    from "../store/useStore.js";
 
 function fmtBytes(b) {
   if (!b) return '0 B';
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`;
+  if (b < 1024)        return `${b} B`;
+  if (b < 1024 ** 2)   return `${(b / 1024).toFixed(1)} KB`;
+  if (b < 1024 ** 3)   return `${(b / 1024 ** 2).toFixed(1)} MB`;
   return `${(b / 1024 ** 3).toFixed(2)} GB`;
 }
 
 export function Settings() {
-  const theme    = useStore(s => s.theme);
-  const setTheme = useStore(s => s.setTheme);
-  const [twofa,  setTwofa]  = useState(true);
-  const [first,  setFirst]  = useState(USER.firstName);
-  const [last,   setLast]   = useState(USER.lastName);
-  const [email,  setEmail]  = useState(USER.email);
-  const [uname,  setUname]  = useState(USER.username);
+  const theme         = useStore(s => s.theme);
+  const setTheme      = useStore(s => s.setTheme);
+  const storeUser     = useStore(s => s.user);
+  const saveProfile   = useStore(s => s.saveUserProfile);
 
-  const [ollama,   setOllama]  = useState(null);
-  const [storage,  setStorage] = useState(null);
-  const [authUser, setAuthUser] = useState(null);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPw,    setLoginPw]    = useState('');
-  const [authErr,    setAuthErr]    = useState('');
-  const [authBusy,   setAuthBusy]   = useState(false);
-  const [clearing,   setClearing]   = useState(false);
+  // Profile form — initialised from store user
+  const [fullName,   setFullName]  = useState(`${storeUser?.firstName ?? ''} ${storeUser?.lastName ?? ''}`.trim());
+  const [avatarLet,  setAvatarLet] = useState(storeUser?.avatar ?? '');
+  const [profileMsg, setProfileMsg]= useState('');
+  const [profileBusy,setPBusy]     = useState(false);
+
+  // Ollama / storage
+  const [ollama,  setOllama]  = useState(null);
+  const [storage, setStorage] = useState(null);
+
+  // Supabase auth
+  const [authUser,    setAuthUser]    = useState(null);
+  const [loginEmail,  setLoginEmail]  = useState('');
+  const [loginPw,     setLoginPw]     = useState('');
+  const [authErr,     setAuthErr]     = useState('');
+  const [authBusy,    setAuthBusy]    = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+
+  // Data actions
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     settingsApi.getOllamaStatus().then(setOllama).catch(() => {});
     settingsApi.getStorage().then(setStorage).catch(() => {});
     settingsApi.getSettings().then(s => {
       if (s.supabase_user) setAuthUser(s.supabase_user);
+      // Sync profile fields from backend if not already set locally
+      if (s.user_name)   setFullName(s.user_name);
+      if (s.user_avatar) setAvatarLet(s.user_avatar);
     }).catch(() => {});
   }, []);
+
+  const handleSaveProfile = async () => {
+    setPBusy(true);
+    setProfileMsg('');
+    try {
+      await saveProfile(fullName.trim(), avatarLet.trim() || fullName[0]?.toUpperCase() || 'U');
+      setProfileMsg('Saved!');
+      setTimeout(() => setProfileMsg(''), 2500);
+    } catch { setProfileMsg('Save failed.'); }
+    finally  { setPBusy(false); }
+  };
 
   const handleLogin = async () => {
     setAuthErr(''); setAuthBusy(true);
@@ -51,27 +73,22 @@ export function Settings() {
       const res = await settingsApi.login(loginEmail, loginPw);
       setAuthUser(res);
       setLoginEmail(''); setLoginPw('');
-    } catch (e) {
-      setAuthErr(e.message);
-    } finally {
-      setAuthBusy(false);
-    }
+      useStore.getState().setSupabaseUser(res);
+    } catch (e) { setAuthErr(e.message); }
+    finally     { setAuthBusy(false); }
   };
 
   const handleLogout = async () => {
     await settingsApi.logout().catch(() => {});
     setAuthUser(null);
+    useStore.getState().setSupabaseUser(null);
   };
 
   const handleClear = async () => {
-    if (!confirm('This will delete all local folders, files, and generated outputs. Continue?')) return;
+    if (!confirm('Delete all local folders, files, and generated outputs?')) return;
     setClearing(true);
-    try {
-      await settingsApi.clearData();
-      setStorage(null);
-    } finally {
-      setClearing(false);
-    }
+    try { await settingsApi.clearData(); setStorage(null); }
+    finally { setClearing(false); }
   };
 
   const handleExport = async () => {
@@ -80,32 +97,69 @@ export function Settings() {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
-      a.href     = url;
-      a.download = `reviewbot-export-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      a.href = url; a.download = `reviewbot-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch { alert('Export failed. Make sure the backend is running.'); }
   };
 
+  const avatarSeed = fullName.trim().replace(/\s+/g, '') || 'user';
+  const displayEmail  = authUser?.email || storeUser?.email || '';
+
   return (
     <>
-      {/* Ollama status */}
+      {/* ── Profile ──────────────────────────────────────────── */}
+      <SLabel className="gap-12">Profile</SLabel>
+      <Card className="gap-20">
+        <div className="settings-account-card">
+          <Avatar seed={avatarSeed} size={64} />
+          <div className="settings-meta">
+            <div className="settings-name">{fullName || 'No name set'}</div>
+            <div className="settings-email">
+              {displayEmail || 'No email'} · Lv.{storeUser?.level ?? 1}
+            </div>
+            <div className="settings-email" style={{ marginTop: 2 }}>
+              🔥 {storeUser?.streak ?? 0}-day streak
+            </div>
+          </div>
+        </div>
+
+        <div className="fields-grid" style={{ marginTop: 8 }}>
+          <FormInput
+            label="Display name"
+            value={fullName}
+            onChange={e => setFullName(e.target.value)}
+            placeholder="e.g. Juan dela Cruz"
+          />
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: -4 }}>
+          Your avatar is auto-generated from your name — no upload needed.
+        </div>
+        <div className="save-row">
+          <Btn variant="primary" size="sm" onClick={handleSaveProfile} disabled={profileBusy}>
+            {profileBusy ? 'Saving…' : 'Save profile'}
+          </Btn>
+          {profileMsg && (
+            <span style={{ fontSize: 12, color: profileMsg === 'Saved!' ? 'var(--success)' : 'var(--danger)', marginLeft: 10 }}>
+              {profileMsg}
+            </span>
+          )}
+        </div>
+      </Card>
+
+      {/* ── AI Engine ─────────────────────────────────────────── */}
       <SLabel className="gap-12">AI Engine (Ollama)</SLabel>
       <Card className="gap-16">
         {ollama ? (
           <div className="sec-row">
             <div>
               <div className="sec-row-label">
-                <Ic n={ollama.running ? 'check' : 'x'} s={14} c={ollama.running ? 'var(--success)' : 'var(--danger)'} />
+                <Ic n={ollama.running ? 'check' : 'x'} s={14}
+                  c={ollama.running ? 'var(--success)' : 'var(--danger)'} />
                 {ollama.running ? ' Ollama running' : ' Ollama not detected'}
               </div>
-              {ollama.running && ollama.active_model && (
-                <div className="sec-row-sub">Active model: {ollama.active_model}</div>
-              )}
-              {ollama.recommendation && (
-                <div className="sec-row-sub">Recommended: {ollama.recommendation}</div>
+              {ollama.recommended_model && (
+                <div className="sec-row-sub">Recommended: {ollama.recommended_model} · {ollama.ram_gb} GB RAM</div>
               )}
               {ollama.models?.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
@@ -121,109 +175,58 @@ export function Settings() {
         )}
       </Card>
 
-      {/* Account card */}
-      <SLabel className="gap-12">Account</SLabel>
-      <Card className="gap-20">
-        <div className="settings-account-card">
-          <Avatar letter={USER.avatar} size={64} />
-          <div className="settings-meta">
-            <div className="settings-name">{USER.firstName} {USER.lastName}</div>
-            <div className="settings-email">{USER.email} · Level {USER.level}</div>
-            <div className="settings-actions">
-              <Btn variant="secondary" size="sm">
-                <Ic n="camera" s={13} /> Change photo
-              </Btn>
-              <Btn variant="secondary" size="sm">
-                <Ic n="edit" s={13} /> Edit profile
-              </Btn>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* Profile details */}
-      <SLabel className="gap-12">Profile Details</SLabel>
-      <Card className="gap-20">
-        <div className="fields-grid">
-          <FormInput label="First name"     value={first}  onChange={e => setFirst(e.target.value)}  />
-          <FormInput label="Last name"      value={last}   onChange={e => setLast(e.target.value)}   />
-          <FormInput label="Email address"  value={email}  onChange={e => setEmail(e.target.value)} type="email" />
-          <FormInput label="Username"       value={uname}  onChange={e => setUname(e.target.value)}  />
-        </div>
-        <div className="save-row">
-          <Btn variant="primary" size="sm">Save changes</Btn>
-        </div>
-      </Card>
-
-      {/* Appearance */}
+      {/* ── Appearance ─────────────────────────────────────────── */}
       <SLabel className="gap-12">Appearance</SLabel>
       <Card className="gap-20">
         <div className="sec-row">
           <div>
-            <div className="sec-row-label">
-              <Ic n="sparkles" s={14} c="var(--blue)" /> Dark mode
-            </div>
+            <div className="sec-row-label"><Ic n="sparkles" s={14} c="var(--blue)" /> Dark mode</div>
             <div className="sec-row-sub">Switch between light and dark interface</div>
           </div>
-          <Toggle
-            checked={theme === 'dark'}
-            onChange={e => setTheme(e.target.checked ? 'dark' : 'light')}
-          />
+          <Toggle checked={theme === 'dark'} onChange={e => setTheme(e.target.checked ? 'dark' : 'light')} />
         </div>
       </Card>
 
-      {/* Security */}
-      <SLabel className="gap-12">Security</SLabel>
-      <Card className="gap-20">
-        <div className="sec-row">
-          <div>
-            <div className="sec-row-label">
-              <Ic n="lock" s={14} c="var(--blue)" /> Password
-            </div>
-            <div className="sec-row-sub">Last changed 3 months ago</div>
-          </div>
-          <Btn variant="secondary" size="sm">Change password</Btn>
-        </div>
-        <div className="sec-row">
-          <div>
-            <div className="sec-row-label">
-              <Ic n="shield" s={14} c="var(--blue)" /> Two-factor authentication
-            </div>
-            <div className="sec-row-sub">Add an extra layer of security</div>
-          </div>
-          <Toggle checked={twofa} onChange={e => setTwofa(e.target.checked)} />
-        </div>
-      </Card>
-
-      {/* Online account (Supabase) */}
-      <SLabel className="gap-12">Online Account (optional)</SLabel>
+      {/* ── Online Account ─────────────────────────────────────── */}
+      <SLabel className="gap-12">Online Account (optional — for public sharing)</SLabel>
       <Card className="gap-20">
         {authUser ? (
-          <div className="sec-row">
-            <div>
-              <div className="sec-row-label"><Ic n="check" s={14} c="var(--success)" /> Signed in</div>
-              <div className="sec-row-sub">{authUser.email}</div>
+          <>
+            <div className="sec-row">
+              <div>
+                <div className="sec-row-label"><Ic n="check" s={14} c="var(--success)" /> Signed in</div>
+                <div className="sec-row-sub">{authUser.email}</div>
+              </div>
+              <Btn variant="secondary" size="sm" onClick={handleLogout}>Sign out</Btn>
             </div>
-            <Btn variant="secondary" size="sm" onClick={handleLogout}>Sign out</Btn>
-          </div>
+            <div className="sec-row-sub" style={{ marginTop: 4 }}>
+              You can now make folders public and share your reviewers with others.
+            </div>
+          </>
         ) : (
           <>
-            <div className="sec-row-sub">Sign in to search and share public reviewers.</div>
+            <div className="sec-row-sub">
+              Sign in to search and share public reviewers. Works with any email — signing in
+              also creates a free account if one doesn&apos;t exist.
+            </div>
             <div className="fields-grid">
-              <FormInput label="Email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} type="email" />
-              <FormInput label="Password" value={loginPw}  onChange={e => setLoginPw(e.target.value)}   type="password" />
+              <FormInput label="Email" value={loginEmail}
+                onChange={e => setLoginEmail(e.target.value)} type="email" />
+              <FormInput label="Password" value={loginPw}
+                onChange={e => setLoginPw(e.target.value)} type="password" />
             </div>
             {authErr && <div style={{ color: 'var(--danger)', fontSize: 13 }}>{authErr}</div>}
             <div className="save-row">
-              <Btn variant="primary" size="sm" onClick={handleLogin} disabled={authBusy}>
-                {authBusy ? 'Signing in…' : 'Sign in / Register'}
+              <Btn variant="primary" size="sm" onClick={handleLogin}
+                disabled={authBusy || !loginEmail || !loginPw}>
+                {authBusy ? 'Signing in…' : 'Sign in / Create account'}
               </Btn>
             </div>
           </>
         )}
       </Card>
 
-      {/* Storage */}
+      {/* ── Storage ────────────────────────────────────────────── */}
       <SLabel className="gap-12">Storage</SLabel>
       <Card className="gap-16">
         {storage ? (
@@ -231,7 +234,9 @@ export function Settings() {
             <div className="sec-row-sub">Database: {fmtBytes(storage.db_size_bytes)}</div>
             <div className="sec-row-sub">Outputs: {fmtBytes(storage.outputs_size_bytes)}</div>
             <div className="sec-row-sub">Embeddings: {fmtBytes(storage.chroma_size_bytes)}</div>
-            <div className="sec-row-sub" style={{ fontWeight: 600 }}>Total: {fmtBytes(storage.total_bytes)}</div>
+            <div className="sec-row-sub" style={{ fontWeight: 600 }}>
+              Total: {fmtBytes(storage.total_bytes)}
+            </div>
           </>
         ) : (
           <div className="sec-row-sub">Loading storage info…</div>
@@ -243,20 +248,6 @@ export function Settings() {
           <Btn variant="danger" size="sm" onClick={handleClear} disabled={clearing}>
             {clearing ? 'Clearing…' : 'Clear all local data'}
           </Btn>
-        </div>
-      </Card>
-
-      {/* Session */}
-      <SLabel className="gap-12">Session</SLabel>
-      <Card className="gap-20">
-        <div className="sec-row">
-          <div>
-            <div className="sec-row-label text-danger">
-              <Ic n="signout" s={14} /> Sign out
-            </div>
-            <div className="sec-row-sub">End your current session</div>
-          </div>
-          <Btn variant="danger" size="sm">Sign out</Btn>
         </div>
       </Card>
     </>

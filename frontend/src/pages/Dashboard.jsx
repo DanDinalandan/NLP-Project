@@ -5,22 +5,25 @@ import { Badge }  from "../components/ui/Badge.jsx";
 import { Card }   from "../components/ui/Card.jsx";
 import { Ic }     from "../components/ui/Icons.jsx";
 import { SLabel } from "../components/ui/SLabel.jsx";
-import { RECENTS } from "../data/mockData.js";
-
-const RECENT_TYPES = {
-  Flashcard: { i: "flashcard", bg: "linear-gradient(135deg, #eaecff, #c3bee9)", typeBg: "rgba(140,152,228,.14)", c: "#6b77cc" },
-  MCQ:       { i: "mcq",       bg: "linear-gradient(135deg, #fce4f1, #f5cae8)", typeBg: "rgba(245,202,232,.5)",  c: "#9d3a7a" },
-  Summary:   { i: "summary",   bg: "linear-gradient(135deg, #d1fae5, #a7f3d0)", typeBg: "#d1fae5",               c: "#059669" },
-  FIB:       { i: "fib",       bg: "linear-gradient(135deg, #fef3c7, #fde68a)", typeBg: "#fef3c7",               c: "#b45309" },
-  QA:        { i: "qa",        bg: "linear-gradient(135deg, #e0daf5, #c3bee9)", typeBg: "rgba(140,152,228,.14)", c: "var(--text2)" },
-};
 
 export function Dashboard() {
-  const navigate = useNavigate();
-  const user    = useStore(s => s.user);
-  const foldersWithMastery = useStore(s =>
-    s.folders.map(f => ({ ...f, mastery: getFolderMasteryPct(s, f.id) }))
-  );
+  const navigate      = useNavigate();
+  const user          = useStore(s => s.user);
+  const folders       = useStore(s => s.folders);
+  const masteredCards = useStore(s => s.masteredCards);
+  const masteredMCQs  = useStore(s => s.masteredMCQs);
+  const flashcards    = useStore(s => s.flashcards);
+  const mcqs          = useStore(s => s.mcqs);
+
+  const foldersWithMastery = folders.map(f => ({
+    ...f,
+    mastery: getFolderMasteryPct({ masteredCards, masteredMCQs, flashcards, mcqs }, f.id),
+  }));
+
+  const openFolder = (folder) => {
+    useStore.setState({ pendingFolderOpen: folder.id });
+    navigate('/studyfiles');
+  };
 
   return (
     <>
@@ -35,37 +38,40 @@ export function Dashboard() {
       </div>
       <div className="folders-grid gap-28">
         {foldersWithMastery.map(f => (
-          <FolderCard key={f.id} folder={f} onClick={() => navigate("/studyfiles")} />
+          <FolderCard key={f.id} folder={f} onClick={() => openFolder(f)} />
         ))}
         <NewFolderCard onClick={() => navigate("/studyfiles")} />
       </div>
 
-      {/* Recents */}
-      <div className="section-header">
-        <SLabel>Recently Viewed</SLabel>
-        <button className="section-action" onClick={() => navigate("/studyfiles")}>
-          See all →
-        </button>
-      </div>
-      <div className="recents-grid">
-        {RECENTS.map(r => {
-          const style = RECENT_TYPES[r.type] || RECENT_TYPES.Flashcard;
-          return (
-            <div key={r.id} className="recent-card" onClick={() => navigate('/studyfiles')}>
-              <div className="recent-thumb" style={{ background: style.bg }}>
-                <Ic n={style.i} s={32} c={style.c} />
+      {/* Recent folders */}
+      {foldersWithMastery.length > 0 && (
+        <>
+          <div className="section-header">
+            <SLabel>Recently Edited</SLabel>
+            <button className="section-action" onClick={() => navigate("/studyfiles")}>
+              See all →
+            </button>
+          </div>
+          <div className="recents-grid">
+            {foldersWithMastery.slice(-3).reverse().map(f => (
+              <div key={f.id} className="recent-card" onClick={() => openFolder(f)}>
+                <div className="recent-thumb" style={{ background: "linear-gradient(135deg,#eaecff,#c3bee9)" }}>
+                  <Ic n="folder" s={32} c="#6b77cc" />
+                </div>
+                <div className="recent-body">
+                  <div className="recent-name">{f.name}</div>
+                  <div className="recent-time">{f.files} file{f.files !== 1 ? 's' : ''} · {f.edited}</div>
+                </div>
+                <div className="recent-footer">
+                  <Badge bg="rgba(140,152,228,.14)" cl="#6b77cc">
+                    {f.outputCount > 0 ? `${f.outputCount} outputs` : 'No outputs yet'}
+                  </Badge>
+                </div>
               </div>
-              <div className="recent-body">
-                <div className="recent-name">{r.name}</div>
-                <div className="recent-time">{r.time}</div>
-              </div>
-              <div className="recent-footer">
-                <Badge bg={style.typeBg} cl={style.c}>{r.type}</Badge>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }

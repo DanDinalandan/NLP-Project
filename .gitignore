@@ -1,14 +1,29 @@
-# Environment secrets — never commit these
+# ── Secrets ───────────────────────────────────────────────────
 backend/.env
 .env
 
-# Tauri sidecar binary — built by build_sidecar.bat or GitHub Actions, never committed
-frontend/src-tauri/binaries/*.exe
+# ── Python ────────────────────────────────────────────────────
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+# PyInstaller local build artifacts (sidecar is built by CI, not committed)
+backend/build/
+backend/dist/
 
-# Tauri build output
+# ── Tauri ─────────────────────────────────────────────────────
+# Pre-built sidecar binary — built by build_sidecar.bat or GitHub Actions
+frontend/src-tauri/binaries/*.exe
+# Rust/Tauri build output
 frontend/src-tauri/target/
 
-# Logs
+# ── Node ──────────────────────────────────────────────────────
+node_modules
+dist
+dist-ssr
+*.local
+
+# ── Logs ──────────────────────────────────────────────────────
 logs
 *.log
 npm-debug.log*
@@ -17,14 +32,18 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# ── User data (never in repo) ─────────────────────────────────
+*.sqlite
+*.db
+chroma/
 
-# Editor directories and files
+# ── AI session meta-files ─────────────────────────────────────
+NEXT_SESSION.md
+
+# ── Editor ────────────────────────────────────────────────────
 .vscode/*
 !.vscode/extensions.json
+!.vscode/tasks.json
 .idea
 .DS_Store
 *.suo

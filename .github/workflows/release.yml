@@ -31,9 +31,12 @@ jobs:
           python-version: '3.11'
 
       # ── Build Python sidecar ─────────────────────────────────
-      - name: Install Python dependencies
+      - name: Create venv and install dependencies
         working-directory: backend
-        run: pip install pyinstaller -r requirements.txt
+        run: |
+          python -m venv venv
+          venv\Scripts\pip install -r requirements.txt
+        shell: cmd
 
       - name: Build sidecar binary
         working-directory: backend

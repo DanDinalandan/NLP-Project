@@ -1,7 +1,7 @@
 import os
+import re
 from pathlib import Path
-from typing import Optional
-import weasyprint
+from fpdf import FPDF
 
 
 def get_outputs_dir() -> Path:
@@ -11,56 +11,58 @@ def get_outputs_dir() -> Path:
     return out_dir
 
 
-def markdown_to_html(markdown_text: str, title: str = "") -> str:
-    # Simple markdown → HTML conversion without extra dependencies
-    import re
+def _clean(text: str) -> str:
+    """Strip inline markdown markers and coerce to Latin-1 (core font safe)."""
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
+    return text.encode("latin-1", errors="replace").decode("latin-1")
 
-    html = markdown_text
-    # Headers
-    html = re.sub(r"^#### (.+)$", r"<h4>\1</h4>", html, flags=re.MULTILINE)
-    html = re.sub(r"^### (.+)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
-    html = re.sub(r"^## (.+)$", r"<h2>\1</h2>", html, flags=re.MULTILINE)
-    html = re.sub(r"^# (.+)$", r"<h1>\1</h1>", html, flags=re.MULTILINE)
-    # Bold / italic
-    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
-    html = re.sub(r"\*(.+?)\*", r"<em>\1</em>", html)
-    # Bullets
-    html = re.sub(r"^[-*] (.+)$", r"<li>\1</li>", html, flags=re.MULTILINE)
-    html = re.sub(r"(<li>.*</li>)", r"<ul>\1</ul>", html, flags=re.DOTALL)
-    # Paragraphs
-    parts = re.split(r"\n\n+", html)
-    parts = [
-        f"<p>{p.strip()}</p>" if not p.strip().startswith("<") else p.strip()
-        for p in parts
-        if p.strip()
-    ]
-    body = "\n".join(parts)
 
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>{title}</title>
-<style>
-  body {{ font-family: Georgia, serif; max-width: 800px; margin: 40px auto; padding: 0 20px;
-         color: #111; line-height: 1.6; }}
-  h1 {{ font-size: 2em; border-bottom: 2px solid #333; padding-bottom: 0.2em; }}
-  h2 {{ font-size: 1.5em; margin-top: 1.5em; color: #1a1a2e; }}
-  h3 {{ font-size: 1.2em; color: #333; }}
-  ul {{ padding-left: 1.5em; }}
-  li {{ margin-bottom: 0.3em; }}
-  strong {{ color: #1a1a2e; }}
-  p {{ margin: 0.8em 0; }}
-</style>
-</head>
-<body>
-{body}
-</body>
-</html>"""
+# fpdf2 v2.x cursor reset args — keeps X at left margin and Y on next line after multi_cell
+_NX = "LMARGIN"
+_NY = "NEXT"
 
 
 def generate_pdf(content_markdown: str, filename: str, title: str = "") -> str:
-    html = markdown_to_html(content_markdown, title)
+    pdf = FPDF()
+    pdf.set_margins(20, 20, 20)
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    if title:
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.multi_cell(0, 10, _clean(title), align="C", new_x=_NX, new_y=_NY)
+        pdf.ln(6)
+
+    for raw_line in content_markdown.splitlines():
+        line = raw_line.rstrip()
+
+        if line.startswith("#### "):
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.multi_cell(0, 6, _clean(line[5:]), new_x=_NX, new_y=_NY)
+            pdf.ln(1)
+        elif line.startswith("### "):
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.multi_cell(0, 7, _clean(line[4:]), new_x=_NX, new_y=_NY)
+            pdf.ln(2)
+        elif line.startswith("## "):
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.multi_cell(0, 8, _clean(line[3:]), new_x=_NX, new_y=_NY)
+            pdf.ln(3)
+        elif line.startswith("# "):
+            pdf.set_font("Helvetica", "B", 16)
+            pdf.multi_cell(0, 10, _clean(line[2:]), new_x=_NX, new_y=_NY)
+            pdf.ln(4)
+        elif line.startswith("- ") or line.startswith("* "):
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_x(pdf.l_margin + 5)
+            pdf.multi_cell(0, 5, "- " + _clean(line[2:]), new_x=_NX, new_y=_NY)
+        elif not line.strip():
+            pdf.ln(3)
+        else:
+            pdf.set_font("Helvetica", "", 10)
+            pdf.multi_cell(0, 5, _clean(line), new_x=_NX, new_y=_NY)
+
     out_path = get_outputs_dir() / filename
-    weasyprint.HTML(string=html).write_pdf(str(out_path))
+    pdf.output(str(out_path))
     return str(out_path)

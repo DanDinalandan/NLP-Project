@@ -1,22 +1,43 @@
 import { Card }       from "../components/ui/Card.jsx";
 import { Ic }         from "../components/ui/Icons.jsx";
 import { SLabel }     from "../components/ui/SLabel.jsx";
-import { STATS, ACTIVITY, ACC_TYPES } from "../data/mockData.js";
 import { ACHIEVEMENTS }               from "../data/gamification.js";
 import { useStore, getFolderMasteryPct } from "../store/useStore.js";
 import { getLevelTitle, xpForLevel }     from "../data/gamification.js";
 
 export function Progress() {
-  const user              = useStore(s => s.user);
-  const masteryData       = useStore(s => s.masteryData);
+  const user               = useStore(s => s.user);
   const earnedAchievements = useStore(s => s.earnedAchievements);
   const reviewSessionCount = useStore(s => s.reviewSessionCount);
   const reviewerCount      = useStore(s => s.reviewerCount);
   const totalTermsMastered = useStore(s => s.totalTermsMastered);
 
-  const foldersWithMastery = useStore(s =>
-    s.folders.map(f => ({ ...f, mastery: getFolderMasteryPct(s, f.id) }))
-  );
+  // Stable slice selectors — no new arrays created inside selector
+  const folders       = useStore(s => s.folders);
+  const masteredCards = useStore(s => s.masteredCards);
+  const masteredMCQs  = useStore(s => s.masteredMCQs);
+  const flashcardsMap = useStore(s => s.flashcards);
+  const mcqsMap       = useStore(s => s.mcqs);
+
+  const foldersWithMastery = folders.map(f => ({
+    ...f,
+    mastery: getFolderMasteryPct({ masteredCards, masteredMCQs, flashcards: flashcardsMap, mcqs: mcqsMap }, f.id),
+  }));
+
+  // Real stats derived from store
+  const totalFc  = Object.values(flashcardsMap).reduce((s, arr) => s + arr.length, 0);
+  const totalMcq = Object.values(mcqsMap).reduce((s, arr) => s + arr.length, 0);
+  const mastFc   = Object.values(masteredCards).reduce((s, obj) => s + Object.keys(obj).length, 0);
+  const mastMcq  = Object.values(masteredMCQs).reduce((s, obj) => s + Object.keys(obj).length, 0);
+  const fcPct    = totalFc  > 0 ? Math.round((mastFc  / totalFc)  * 100) : 0;
+  const mcqPct   = totalMcq > 0 ? Math.round((mastMcq / totalMcq) * 100) : 0;
+
+  const stats = [
+    { label: "Level",            val: `${user.level}`,           sub: getLevelTitle(user.level) },
+    { label: "Terms Mastered",   val: `${totalTermsMastered}`,   sub: `${totalFc + totalMcq} total terms` },
+    { label: "Review Sessions",  val: `${reviewSessionCount}`,   sub: `${reviewerCount} reviewers created` },
+    { label: "Folders",          val: `${folders.length}`,       sub: `${folders.filter(f => f.outputCount > 0).length} with outputs` },
+  ];
 
   const levelTitle = getLevelTitle(user.level);
   const xpMax      = user.xpMax ?? xpForLevel(user.level);
@@ -39,7 +60,7 @@ export function Progress() {
 
       {/* Stat tiles */}
       <div className="stats-grid">
-        {STATS.map(s => <StatTile key={s.label} stat={s} />)}
+        {stats.map(s => <StatTile key={s.label} stat={s} />)}
       </div>
 
       {/* ── XP / Level bar ── */}
@@ -81,23 +102,6 @@ export function Progress() {
         </div>
       </div>
 
-      {/* Activity heatmap */}
-      <Card className="gap-20">
-        <SLabel className="gap-14">Activity — Last 4 Weeks</SLabel>
-        <div className="heatmap-grid">
-          {ACTIVITY.map((v, i) => (
-            <div key={i} className="hm-cell"
-              style={{ background: ["#F7E6A1", "#F5C1E6", "#B5E4F5", "#a7f3d0"][v] }} />
-          ))}
-        </div>
-        <div className="hm-legend">
-          <span>Less</span>
-          {["#F7E6A1", "#F5C1E6", "#B5E4F5", "#a7f3d0"].map((c, i) => (
-            <div key={i} className="hm-legend-box" style={{ background: c }} />
-          ))}
-          <span>More</span>
-        </div>
-      </Card>
 
       {/* ── Folder Mastery ── */}
       {foldersWithMastery.length > 0 && (
@@ -162,31 +166,9 @@ export function Progress() {
         </div>
       </Card>
 
-      {/* ── Topic Mastery ── */}
-      <Card className="gap-20">
-        <SLabel className="gap-12">TOPIC MASTERY</SLabel>
-        <div className="mastery-list">
-          {masteryData.map(item => {
-            const pct = Math.round((item.score / item.total) * 100);
-            const typeColors = { Flashcard: "var(--blue)", MCQ: "#F296D8", FIB: "#F7DE77", Summary: "#059669", QA: "var(--text2)" };
-            const color = typeColors[item.type] || "var(--blue)";
-            return (
-              <div key={item.id} className="mastery-row">
-                <div className="mastery-header">
-                  <span>{item.name}</span>
-                  <span style={{ color }}>{pct}% ({item.score}/{item.total})</span>
-                </div>
-                <div className="progress-track-full progress-track-md">
-                  <div className="fc-fill" style={{ width: `${pct}%`, background: color }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
 
       {/* Accuracy */}
-      <AccuracyCard />
+      <AccuracyCard fcPct={fcPct} mcqPct={mcqPct} />
     </>
   );
 }
@@ -201,26 +183,27 @@ function StatTile({ stat }) {
   );
 }
 
-function AccuracyCard() {
+function AccuracyCard({ fcPct, mcqPct }) {
+  const types = [
+    { label: "Flashcards", pct: fcPct,  icon: "flashcard", color: "var(--blue)" },
+    { label: "MCQ",        pct: mcqPct, icon: "mcq",       color: "#F296D8"     },
+  ];
   return (
     <Card>
+      <SLabel className="gap-12">MASTERY BY TYPE</SLabel>
       <div className="acc-list">
-        {ACC_TYPES.map(acc => {
-          const typeColors = { Flashcards: "var(--blue)", MCQ: "#F296D8", "Fill-in-blank": "#F7DE77" };
-          const barColor = typeColors[acc.label] || "var(--blue)";
-          return (
-            <div key={acc.label} className="acc-row">
-              <div className="acc-name">
-                <Ic n={acc.icon} s={16} c={barColor} />
-                {acc.label}
-              </div>
-              <div className="progress-track-full acc-track">
-                <div className="fc-fill" style={{ width: `${acc.pct}%`, background: barColor }} />
-              </div>
-              <div className="acc-pct" style={{ color: barColor }}>{acc.pct}%</div>
+        {types.map(acc => (
+          <div key={acc.label} className="acc-row">
+            <div className="acc-name">
+              <Ic n={acc.icon} s={16} c={acc.color} />
+              {acc.label}
             </div>
-          );
-        })}
+            <div className="progress-track-full acc-track">
+              <div className="fc-fill" style={{ width: `${acc.pct}%`, background: acc.color }} />
+            </div>
+            <div className="acc-pct" style={{ color: acc.color }}>{acc.pct}%</div>
+          </div>
+        ))}
       </div>
     </Card>
   );

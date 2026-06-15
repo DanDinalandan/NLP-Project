@@ -6,11 +6,14 @@ An offline-first, AI-powered desktop study app for Windows. Upload your notes, s
 
 ## Features
 
-- **AI generation** — flashcards, MCQs, fill-in-blanks, and summary PDFs from PDF, PPTX, CSV, TXT, and MD files
-- **RAG chat** — ask questions about your uploaded materials; answers cite the exact file and page range
-- **Manual creation** — add flashcards and MCQs by hand, no AI needed
-- **Gamification** — XP, 100 levels with titles, 20 achievements, per-folder mastery bars
-- **Public sharing** — optional Supabase account to publish and search community reviewers
+- **AI generation** — flashcards, MCQs, fill-in-blanks, and summary + reviewer PDFs from PDF, PPTX, CSV, TXT, and MD files
+- **Inline editing** — every generated card, question, or blank is editable directly in the app; changes autosave
+- **Manual creation** — add flashcards, MCQs, and fill-in-blanks by hand with no AI required
+- **RAG chat** — ask questions about your uploaded materials; answers are grounded in your content and cite the exact file and page range
+- **Quiz modes** — flashcard study (flip + rate), MCQ quiz (instant feedback), fill-in-the-blank exercise — all with a score popup at the end
+- **Gamification** — XP, 100 levels with tier titles, 20 achievements, per-folder mastery bars
+- **Export** — download flashcards and MCQs as DOCX, MCQs as CSV, summaries and reviewer PDFs
+- **Public sharing** — optional Supabase account to publish reviewers and search the community library
 - **Fully offline** — everything runs locally; internet only needed for the optional sharing features
 - **Dark mode** — toggle in Settings
 
@@ -42,6 +45,8 @@ An offline-first, AI-powered desktop study app for Windows. Upload your notes, s
 
 ReviewBot uses [Ollama](https://ollama.com) to run the AI locally. Without it the app works in manual mode only.
 
+The app can install Ollama automatically from the first-run setup wizard, or you can do it manually:
+
 1. Download the Ollama installer from **[ollama.com](https://ollama.com)**
 2. Run the installer — Ollama runs as a background service automatically
 3. Open a terminal and pull a model (see the table below)
@@ -66,12 +71,29 @@ You should see the model you just pulled. ReviewBot auto-detects it on launch.
 
 ## First Launch
 
-1. Open ReviewBot
-2. Go to **Settings** — confirm the green "Ollama running" status
-3. Go to **Study Files → New folder**
-4. Upload a PDF, PPTX, TXT, or CSV
-5. Click **Generate** — outputs appear within a few minutes depending on file size and model
-6. Open **Flashcards**, **MCQ**, or **Summary PDF** to start studying
+1. Open ReviewBot — the **Setup Wizard** walks you through installing Ollama and pulling a model if needed
+2. Go to **Study Files → New folder**
+3. Upload a PDF, PPTX, TXT, or CSV
+4. Click **Generate** — choose which output types and how many items to create
+5. Generation runs in the background (~3–7 min per file on CPU); a banner shows progress
+6. When done, click any output card to browse and edit your cards/questions
+7. Hit **Study Flashcards / Take Quiz / Take Exercise** to start a session
+
+> **Tip:** Start with 10 flashcards and 10 MCQs for your first test run — generation is faster and you can always re-generate for more.
+
+---
+
+## Generation Times
+
+Generation runs sequentially on your local machine. Rough estimates on CPU with llama3.1:8b:
+
+| File type | Output count | Approx. time |
+|-----------|-------------|--------------|
+| 1-page PDF or MD | 10 FC + 10 MCQ + 5 FIB | ~8–15 min |
+| 10-page PDF | 15 FC + 10 MCQ + 7 FIB + Summary | ~20–35 min |
+| 20+ page PDF | Full generation | ~40–60 min |
+
+Times are significantly faster with an NVIDIA GPU and CUDA.
 
 ---
 
@@ -81,9 +103,9 @@ Create a free account to publish your reviewers publicly and search the communit
 
 1. Go to **Settings → Online Account**
 2. Enter any email and password — the app registers you automatically on first sign-in
-3. In a folder, toggle the privacy button from **Private** to **Public**, then click **Publish**
+3. Inside a folder, click the **Publish** button to share your reviewer
 
-No personal data is required. The account only stores your published reviewers.
+No personal data is required. The account only stores reviewer content you explicitly publish.
 
 ---
 
@@ -109,6 +131,8 @@ Local study data is stored in `%APPDATA%\ReviewBot\`. Delete this folder manuall
 ```bash
 # 1. Start the Python backend
 cd backend
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn main:app --host 127.0.0.1 --port 8765 --reload
 
@@ -160,9 +184,9 @@ Installer output: `frontend/src-tauri/target/release/bundle/nsis/`
 | Routing | React Router 7 |
 | Backend | Python + FastAPI (port 8765, Tauri sidecar) |
 | AI inference | Ollama (local LLMs) |
-| Vector store | ChromaDB (local embeddings) |
+| Vector store | ChromaDB (local embeddings for RAG) |
 | Database | SQLite (`%APPDATA%\ReviewBot\db\reviewbot.sqlite`) |
-| PDF generation | WeasyPrint |
+| PDF generation | fpdf2 |
 | File parsing | pdfplumber, python-pptx, pandas |
 | Optional cloud | Supabase (auth + public reviewer storage) |
 

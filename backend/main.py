@@ -7,15 +7,27 @@ Listens on 127.0.0.1:8765 — not exposed externally.
 The file upload endpoint parses files immediately and stores the Markdown in SQLite.
 Generation is triggered separately (POST /folders/{id}/generate) and runs as background tasks.
 """
+import logging
 import os
 import sys
-import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Load .env before anything reads os.environ (no-op when running as built .exe)
 from dotenv import load_dotenv
 load_dotenv()
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+# All modules use `logging.getLogger(__name__)` — this root config applies to all.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+# Quiet noisy third-party loggers
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

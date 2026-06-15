@@ -1,23 +1,23 @@
 import { NavLink, Link } from "react-router-dom";
-import { Avatar }        from "./ui/Avatar";
-import { Ic }            from "./ui/Icons";
+import { Avatar }          from "./ui/Avatar";
+import { Ic }              from "./ui/Icons";
+import { ReviewBotLogo }   from "./ui/ReviewBotLogo.jsx";
 import { NAV_MAIN, NAV_GENERAL, SIDEBAR_META } from "../data/mockData";
-import { useStore }      from "../store/useStore";
-import { getLevelTitle } from "../data/gamification";
+import { useStore }        from "../store/useStore";
+import { getLevelTitle }   from "../data/gamification";
 
 export function Sidebar() {
   const user = useStore((state) => state.user);
-  const folders = useStore((state) => state.folders);
 
   return (
     <aside className="sidebar">
 
       {/* ── Logo ── */}
       <Link to="/" className="sidebar-logo sidebar-logo--link">
-        <div className="sidebar-logo-icon">{SIDEBAR_META.logoMark}</div>
+        <ReviewBotLogo size={38} />
         <div>
-          <div className="sidebar-logo-name">{SIDEBAR_META.logoName}</div>
-          <div className="sidebar-logo-sub">{SIDEBAR_META.logoSub}</div>
+          <div className="sidebar-logo-name">ReviewBot</div>
+          <div className="sidebar-logo-sub">AI Study Assistant</div>
         </div>
       </Link>
 
@@ -32,31 +32,9 @@ export function Sidebar() {
         {NAV_GENERAL.map(n => <NavItem key={n.id} item={n} />)}
       </div>
 
-      {/* ── Files Tree ── */}
-      <div className="sidebar-files">
-        <div className="sidebar-files-header">
-          <div className="sidebar-files-label">{SIDEBAR_META.myFiles}</div>
-          <Link to="/studyfiles" className="sidebar-files-add">
-            <Ic n="plus" s={14} />
-          </Link>
-        </div>
-
-        {folders.slice(0, 5).map(f => (
-          <Link to="/studyfiles" key={f.id} className="file-row file-row--link">
-            <Ic n="folder" s={14} c="currentColor" />
-            <span>{f.name}</span>
-            {f.files > 0 && <div className="file-row-count">{f.files}</div>}
-          </Link>
-        ))}
-
-        <Link to="/studyfiles" className="file-row-see-all file-row-see-all--link">
-          {SIDEBAR_META.seeAll}
-        </Link>
-      </div>
-
       {/* ── User ── */}
       <div className="sidebar-user">
-        <Avatar letter={user?.avatar || "N"} size={32} />
+        <Avatar seed={`${user?.firstName}${user?.lastName}`} size={32} />
         <div className="sidebar-user-info">
           <div className="sidebar-user-name">
             {user?.firstName} {user?.lastName}

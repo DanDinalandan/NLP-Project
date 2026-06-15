@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { Badge }      from "../components/ui/Badge.jsx";
+import { Btn }        from "../components/ui/Btn.jsx";
 import { Ic }         from "../components/ui/Icons.jsx";
 import { SLabel }     from "../components/ui/SLabel.jsx";
 import { searchApi }  from "../api/search.js";
+import { useStore }   from "../store/useStore.js";
 
 const RESULT_TYPES = {
   Flashcard: { i: "flashcard", bg: "linear-gradient(135deg, #eaecff, #c3bee9)", typeBg: "rgba(140,152,228,.14)", c: "#6b77cc" },
@@ -15,19 +17,43 @@ const RESULT_TYPES = {
 function normalizeResult(r) {
   return {
     id:    r.id,
-    title: r.title ?? r.name ?? 'Untitled',
+    title: r.folder_name ?? r.title ?? r.name ?? 'Untitled',
     by:    r.author ?? r.username ?? r.by ?? '',
-    type:  r.output_type ?? r.type ?? 'Summary',
+    type:  'Reviewer',
+    time:  r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
   };
 }
 
 export function Search() {
-  const [mode,    setMode]    = useState("Files");
-  const [q,       setQ]       = useState("");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState(null);
-  const [online,  setOnline]  = useState(navigator.onLine);
+  const [mode,      setMode]    = useState("Files");
+  const [q,         setQ]       = useState("");
+  const [results,   setResults] = useState([]);
+  const [loading,   setLoading] = useState(false);
+  const [error,     setError]   = useState(null);
+  const [online,    setOnline]  = useState(navigator.onLine);
+  const [dlBusy,    setDlBusy]  = useState(null); // reviewer id being downloaded
+
+  const unlockAchievement = useStore(s => s.unlockAchievement);
+
+  const downloadReviewer = async (r) => {
+    setDlBusy(r.id);
+    try {
+      const data = await searchApi.getContent(r.id);
+      const content = data.content_markdown ?? '';
+      const blob = new Blob([content], { type: 'text/markdown' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `${(data.folder_name ?? r.title ?? 'reviewer').replace(/\s+/g, '_')}.md`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      unlockAchievement('download_reviewer');
+    } catch {
+      // silently ignore — network may be flaky
+    } finally {
+      setDlBusy(null);
+    }
+  };
 
   // Track network status
   useEffect(() => {
@@ -148,12 +174,23 @@ export function Search() {
             </div>
             <div className="result-info">
               <div className="result-name">{r.title}</div>
-              {r.by && <div className="result-meta">{r.by}</div>}
+              {r.by   && <div className="result-meta">by {r.by}</div>}
+              {r.time && <div className="result-meta">{r.time}</div>}
             </div>
             <div className="result-badges">
               <Badge bg={style.typeBg} cl={style.c}>{r.type}</Badge>
               <Badge bg="#d1fae5" cl="#059669">Public</Badge>
             </div>
+            <Btn
+              variant="secondary"
+              size="sm"
+              onClick={() => downloadReviewer(r)}
+              disabled={dlBusy === r.id}
+              title="Download as Markdown"
+            >
+              <Ic n="download" s={13} />
+              {dlBusy === r.id ? '…' : 'Download'}
+            </Btn>
           </div>
         );
       })}

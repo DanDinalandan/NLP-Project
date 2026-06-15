@@ -86,7 +86,7 @@ def delete_folder_embeddings(folder_id: int):
     try:
         client.delete_collection(f"folder_{folder_id}")
     except Exception:
-        pass
+        pass  # Collection may not exist yet (no files were generated)
 
 
 def delete_file_embeddings(folder_id: int, file_id: int):

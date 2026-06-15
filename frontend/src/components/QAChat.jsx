@@ -19,9 +19,8 @@ export function QAChat() {
   const [showFilePicker,  setShowFilePicker]   = useState(false);
 
   const activeFolderId    = useStore(s => s.activeFolderId);
-  const sourceFiles       = useStore(s =>
-    activeFolderId ? (s.sourceFiles[activeFolderId] ?? []) : []
-  );
+  const sourceFilesMap    = useStore(s => s.sourceFiles);
+  const sourceFiles       = sourceFilesMap[activeFolderId] ?? [];
   const unlockAchievement = useStore(s => s.unlockAchievement);
   const bottomRef = useRef(null);
 
