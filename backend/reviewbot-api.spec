@@ -1,14 +1,23 @@
 # PyInstaller spec for the ReviewBot API sidecar
-# Run: pyinstaller reviewbot-api.spec
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
+
+# collect_all gathers submodules + data files + native DLLs for each package.
+# This is required for onnxruntime (native DLLs) and chromadb (embedding model data).
+chroma_datas,   chroma_binaries,   chroma_hidden   = collect_all('chromadb')
+onnx_datas,     onnx_binaries,     onnx_hidden     = collect_all('onnxruntime')
+tok_datas,      tok_binaries,      tok_hidden      = collect_all('tokenizers')
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=chroma_binaries + onnx_binaries + tok_binaries,
     datas=[
         ('database/schema.sql', 'database'),
+        *chroma_datas,
+        *onnx_datas,
+        *tok_datas,
     ],
     hiddenimports=[
         'uvicorn.logging',
@@ -25,16 +34,12 @@ a = Analysis(
         'pdfplumber',
         'pptx',
         'pandas',
-        'chromadb',
-        'chromadb.utils.embedding_functions',
-        'chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2',
-        'onnxruntime',
-        'onnxruntime.capi',
-        'onnxruntime.capi.onnxruntime_inference_collection',
-        'tokenizers',
         'fpdf',
         'httpx',
         'psutil',
+        *chroma_hidden,
+        *onnx_hidden,
+        *tok_hidden,
     ],
     hookspath=[],
     hooksconfig={},
