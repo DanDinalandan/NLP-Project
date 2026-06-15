@@ -23,5 +23,11 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+if not exist "..\frontend\src-tauri\binaries" mkdir "..\frontend\src-tauri\binaries"
+
 copy /Y "dist\reviewbot-api.exe" "..\frontend\src-tauri\binaries\reviewbot-api-x86_64-pc-windows-msvc.exe"
+if %errorlevel% neq 0 (
+    echo Copy failed — check that dist\reviewbot-api.exe was created.
+    exit /b 1
+)
 echo Done. Binary copied to frontend/src-tauri/binaries/
