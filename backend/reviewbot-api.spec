@@ -1,14 +1,26 @@
 # PyInstaller spec for the ReviewBot API sidecar
-# Run: pyinstaller reviewbot-api.spec
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
+
+chroma_datas, chroma_binaries, chroma_hidden = collect_all('chromadb')
+
+# Strip the ONNX embedding module — we stub it out via the runtime hook instead.
+# Keeping it in the bundle would let FrozenImporter override our sys.modules stub.
+_ONNX_MODS = {
+    'chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2',
+    'onnxruntime',
+    'tokenizers',
+}
+chroma_hidden = [h for h in chroma_hidden if not any(h == m or h.startswith(m + '.') for m in _ONNX_MODS)]
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=chroma_binaries,
     datas=[
         ('database/schema.sql', 'database'),
+        *chroma_datas,
     ],
     hiddenimports=[
         'uvicorn.logging',
@@ -25,15 +37,15 @@ a = Analysis(
         'pdfplumber',
         'pptx',
         'pandas',
-        'chromadb',
         'fpdf',
         'httpx',
         'psutil',
+        *chroma_hidden,
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
+    runtime_hooks=['pyi_rth_chromadb.py'],
+    excludes=['onnxruntime', 'tokenizers', 'chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -55,7 +67,7 @@ exe = EXE(
     strip=False,
     upx=False,
     upx_exclude=[],
-    runtime_tmpdir=None,
+    runtime_tmpdir='reviewbot-runtime',
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,

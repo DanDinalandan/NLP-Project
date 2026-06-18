@@ -359,35 +359,87 @@ async def _run_pipeline(file: dict, options: dict = None):
         conn.commit()
         conn.close()
 
-        # Generate PDFs
-        safe_name = "".join(c for c in file_data["original_name"] if c.isalnum() or c in "._- ")
-
-        conn = get_connection()
-
-        if gen_sum and summary_text:
-            summary_path = generate_pdf(
-                summary_text,
-                f"summary_{file_id}_{safe_name}.pdf",
-                f"Summary: {file_data['original_name']}",
-            )
-            conn.execute(
-                "INSERT INTO outputs(folder_id,file_id,output_type,file_path,content_markdown) VALUES(?,?,?,?,?)",
-                (folder_id, file_id, "summary_pdf", summary_path, summary_text),
-            )
-
-        reviewer_path = generate_pdf(
-            master_reviewer,
-            f"reviewer_{file_id}_{safe_name}.pdf",
-            f"Reviewer: {file_data['original_name']}",
-        )
-        conn.execute(
-            "INSERT INTO outputs(folder_id,file_id,output_type,file_path,content_markdown) VALUES(?,?,?,?,?)",
-            (folder_id, file_id, "reviewer_pdf", reviewer_path, master_reviewer),
-        )
-        conn.commit()
-        conn.close()
-
         set_status("done")
+
+        # If this was the last file in the folder, generate combined PDFs
+        await _maybe_generate_folder_pdfs(folder_id, model, gen_sum, sum_kw)
 
     except Exception as e:
         set_status("error", str(e)[:500])
+
+
+_folder_combining: set = set()
+
+async def _maybe_generate_folder_pdfs(folder_id: int, model: str, gen_sum: bool, sum_kw: bool):
+    """Generate one combined reviewer PDF (and optionally summary PDF) for the folder
+    after all its files have finished processing. Runs only for the last file."""
+    if folder_id in _folder_combining:
+        return
+
+    conn = get_connection()
+    pending = conn.execute(
+        "SELECT COUNT(*) FROM files WHERE folder_id=? AND status NOT IN ('done','error','cancelled')",
+        (folder_id,),
+    ).fetchone()[0]
+    already_done = conn.execute(
+        "SELECT id FROM outputs WHERE folder_id=? AND file_id IS NULL AND output_type='reviewer_pdf'",
+        (folder_id,),
+    ).fetchone()
+    if pending > 0 or already_done:
+        conn.close()
+        return
+
+    _folder_combining.add(folder_id)
+    try:
+        folder = conn.execute("SELECT name FROM folders WHERE id=?", (folder_id,)).fetchone()
+        folder_name = folder["name"] if folder else f"Folder {folder_id}"
+        files = conn.execute(
+            "SELECT original_name, generated_title, master_reviewer FROM files "
+            "WHERE folder_id=? AND status='done' AND master_reviewer IS NOT NULL",
+            (folder_id,),
+        ).fetchall()
+        conn.close()
+
+        if not files:
+            return
+
+        # Concatenate all master reviewers under per-file section headers
+        sections = []
+        for f in files:
+            title = f["generated_title"] or f["original_name"]
+            sections.append(f"# {title}\n\n{f['master_reviewer']}")
+        combined_reviewer = "\n\n---\n\n".join(sections)
+
+        safe_folder = "".join(c for c in folder_name if c.isalnum() or c in "._- ")
+
+        conn = get_connection()
+
+        # Combined reviewer PDF — no extra AI call needed
+        reviewer_path = generate_pdf(
+            combined_reviewer,
+            f"reviewer_combined_{folder_id}_{safe_folder}.pdf",
+            f"Reviewer: {folder_name}",
+        )
+        conn.execute(
+            "INSERT INTO outputs(folder_id,file_id,output_type,file_path,content_markdown) VALUES(?,?,?,?,?)",
+            (folder_id, None, "reviewer_pdf", reviewer_path, combined_reviewer),
+        )
+
+        # Combined summary PDF — one AI call on the concatenated content
+        if gen_sum:
+            summary_text = await generate_summary(model, combined_reviewer[:8000], sum_kw)
+            if summary_text:
+                summary_path = generate_pdf(
+                    summary_text,
+                    f"summary_combined_{folder_id}_{safe_folder}.pdf",
+                    f"Summary: {folder_name}",
+                )
+                conn.execute(
+                    "INSERT INTO outputs(folder_id,file_id,output_type,file_path,content_markdown) VALUES(?,?,?,?,?)",
+                    (folder_id, None, "summary_pdf", summary_path, summary_text),
+                )
+
+        conn.commit()
+        conn.close()
+    finally:
+        _folder_combining.discard(folder_id)

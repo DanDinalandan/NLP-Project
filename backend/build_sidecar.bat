@@ -15,6 +15,14 @@ if not exist "venv\Scripts\python.exe" (
     exit /b 1
 )
 
+echo Patching chromadb embedding_functions for PyInstaller compatibility...
+copy /Y "pyinstaller_patch_ef_init.py" "venv\Lib\site-packages\chromadb\utils\embedding_functions\__init__.py"
+if %errorlevel% neq 0 (
+    echo Patch failed — is chromadb installed in the venv?
+    exit /b 1
+)
+echo Patch applied.
+
 echo Using venv Python...
 venv\Scripts\pyinstaller reviewbot-api.spec --distpath dist --noconfirm
 
@@ -23,5 +31,11 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+if not exist "..\frontend\src-tauri\binaries" mkdir "..\frontend\src-tauri\binaries"
+
 copy /Y "dist\reviewbot-api.exe" "..\frontend\src-tauri\binaries\reviewbot-api-x86_64-pc-windows-msvc.exe"
+if %errorlevel% neq 0 (
+    echo Copy failed — check that dist\reviewbot-api.exe was created.
+    exit /b 1
+)
 echo Done. Binary copied to frontend/src-tauri/binaries/

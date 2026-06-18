@@ -6,7 +6,7 @@ An offline-first, AI-powered desktop study app for Windows. Upload your notes, s
 
 ## Features
 
-- **AI generation** — flashcards, MCQs, fill-in-blanks, and summary + reviewer PDFs from PDF, PPTX, CSV, TXT, and MD files
+- **AI generation** — flashcards, MCQs, fill-in-blanks, and a combined summary + reviewer PDF per folder from PDF, PPTX, CSV, TXT, and MD files
 - **Inline editing** — every generated card, question, or blank is editable directly in the app; changes autosave
 - **Manual creation** — add flashcards, MCQs, and fill-in-blanks by hand with no AI required
 - **RAG chat** — ask questions about your uploaded materials; answers are grounded in your content and cite the exact file and page range
@@ -93,7 +93,7 @@ Generation runs sequentially on your local machine. Rough estimates on CPU with 
 | 10-page PDF | 15 FC + 10 MCQ + 7 FIB + Summary | ~20–35 min |
 | 20+ page PDF | Full generation | ~40–60 min |
 
-Times are significantly faster with an NVIDIA GPU and CUDA.
+Times are significantly faster with an NVIDIA GPU. If you have one, Ollama uses it automatically — no extra setup needed. Run `ollama ps` while a model is loaded to confirm it shows `GPU` in the PROCESSOR column.
 
 ---
 

@@ -1,6 +1,6 @@
 [package]
 name = "reviewbot"
-version = "0.1.0"
+version = "1.0.8"
 description = "ReviewBot - AI-powered offline study app"
 authors = []
 license = ""
